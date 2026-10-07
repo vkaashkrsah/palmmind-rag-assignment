@@ -4,6 +4,7 @@ import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -60,9 +61,18 @@ class RagService:
                 await self.memory.set_booking(sid, state)
                 answer = f"Happy to book your interview. Please share your {', '.join(missing)}."
             else:
-                row = Booking(session_id=sid, **{k: state[k] for k in REQUIRED})
-                db.add(row)
-                await db.commit()
+                found = await db.execute(
+                    select(Booking).where(
+                        Booking.email == state["email"],
+                        Booking.date == state["date"],
+                        Booking.time == state["time"],
+                    )
+                )
+                row = found.scalars().first()
+                if row is None:
+                    row = Booking(session_id=sid, **{k: state[k] for k in REQUIRED})
+                    db.add(row)
+                    await db.commit()
                 await self.memory.clear_booking(sid)
                 booking = BookingOut.model_validate(row)
                 answer = (

@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy import select
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +33,14 @@ async def ingest_document(
         text = extract_text(filename, data)
     except UnsupportedFileType as exc:
         raise HTTPException(415, str(exc)) from exc
+
+    dup = await db.execute(
+        select(Document.id).where(
+            Document.filename == filename, Document.chunk_strategy == strategy.value
+        )
+    )
+    if dup.first():
+        raise HTTPException(409, "File already ingested with this strategy")
 
     chunks = chunk_text(text, strategy)
     if not chunks:
